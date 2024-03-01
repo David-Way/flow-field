@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>flow-field</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎨</text></svg>">
+  <link rel="stylesheet" type="text/css" href="styles.css" />
+  <script src="lib/p5.min.js"></script>
+
+  <script>
+    class Particle {
+      constructor() {
+        var posOptions = {
+          0: { x: 0, y: 0 }, // top left
+          1: { x: width , y: 0 }, // top right
+          2: { x: 0 , y: height }, // bottom left
+          3: { x: width, y: height }, // bottom right
+        }
+        var xDirection = Math.random() < 0.5 ? -1 : 1;
+        var yDirection = Math.random() < 0.5 ? -1 : 1;
+        var posOption = posOptions[getRandomInt(0, 3)];
+        this.pos = createVector(posOption.x + getRandomInt(0, 10) * xDirection, posOption.y + getRandomInt(0,3) * yDirection);
+        this.vel = createVector(random(width)*xDirection, random(height)*yDirection);
+        this.acc = createVector(0, 0);
+        this.maxSpeed = 3.5;
+        this.prevPos = this.pos.copy();
+      }
+
+      update() {
+        this.vel.add(this.acc);
+        this.vel.limit(this.maxSpeed);
+        this.pos.add(this.vel);
+        this.acc.mult(0);
+      }
+
+      follow(vectors) {
+        var x = floor(this.pos.x / scl);
+        var y = floor(this.pos.y / scl);
+        var index = x + y * cols;
+        var force = vectors[index];
+        this.applyForce(force);
+      }
+
+      applyForce(force) {
+        this.acc.add(force);
+      }
+
+      show() {
+        stroke(255, 10);
+        strokeWeight(1);
+        line(this.pos.x, this.pos.y, this.prevPos.x, this.prevPos.y);
+        this.updatePrev();
+      }
+
+      updatePrev() {
+        this.prevPos.x = this.pos.x;
+        this.prevPos.y = this.pos.y;
+      }
+
+      edges() {
+        if (this.pos.x > width) {
+          this.pos.x = 0;
+          this.updatePrev();
+        }
+        if (this.pos.x < 0) {
+          this.pos.x = width;
+          this.updatePrev();
+        }
+        if (this.pos.y > height) {
+          this.pos.y = 0;
+          this.updatePrev();
+        }
+        if (this.pos.y < 0) {
+          this.pos.y = height;
+          this.updatePrev();
+        }
+
+      }
+    }
+  </script>
+</head>
+<body>
+  <script>
+    // https://thecodingtrain.com/CodingChallenges/024-perlinnoiseflowfield.html
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    var inc = 0.1;
+    var scl = 25;
+    var cols, rows;
+    var zOffset = 0;
+    var getPreGeneratedNeighbors;
+    var fadeAmount = 3.4;
+    var fr;
+    var particles = [];
+    var flowField;
+    var flowFieldEffector;
+    var numberOfParticles = Math.max(300, Math.min(w, 10000));
+    const drawPenSize = 32;
+    const flowFieldEffectorAmount = 0.001;
+
+    function setup() {
+      createCanvas(w, h);
+      cols = floor(w / scl);
+      rows = floor(h / scl);
+      // fr = createP('');
+      getPreGeneratedNeighbors = generateNeighborLookup(cols,rows);
+
+      flowField = new Array(cols * rows);
+      flowFieldEffector = new Array(cols * rows);
+
+      for (var index = 0; index < flowFieldEffector.length; index++) {
+        flowFieldEffector[index] = createVector(0, 0, 0);
+      }
+
+      for (var index = 0; index < numberOfParticles; index++) {
+        particles[index] = new Particle();
+      }
+      background(22); // set initial background color
+    }
+
+    function draw() {
+      if (mouseIsPressed === true) {
+        // Debug/visualize draw input effect
+        // stroke(255, 204, 0);
+        // strokeWeight(drawPenSize);
+        // line(mouseX, mouseY, pmouseX, pmouseY);
+        const drawAngle = createVector(mouseX, mouseY).angleBetween(createVector(pmouseX, pmouseY));
+        var newVectorToImpart = p5.Vector.fromAngle(angle);
+        newVectorToImpart.setMag(10);
+        var flowFieldEffectorCenterIndex = (Math.floor(mouseX/scl)) + (Math.floor(mouseY/scl)) * cols;
+        flowFieldEffector[flowFieldEffectorCenterIndex] = newVectorToImpart;
+        var flowFieldEffectorCenterIndexNeighbors = getPreGeneratedNeighbors(flowFieldEffectorCenterIndex);
+        flowFieldEffectorCenterIndexNeighbors.forEach((neighborIndex) => {
+          flowFieldEffector[neighborIndex] = newVectorToImpart;
+        });
+      }
+
+      background(51, fadeAmount);
+      var yOffset = 0;
+      for (var y = 0; y < rows; y++) {
+        var xOffset = 0;
+        for (var x = 0; x < cols; x++) {
+          var index = x + y * cols;
+          var angle = noise(xOffset, yOffset, zOffset) * TWO_PI * 4;
+          var v = p5.Vector.fromAngle(angle);
+          v.setMag(1);
+          flowField[index] = v;
+          flowFieldEffector[index] = flowFieldEffector[index].lerp(v, flowFieldEffectorAmount);
+          xOffset += inc;
+          // Debug/visualize flow field or field effector
+          // if (mouseIsPressed) {
+          //   stroke(255, 204, 0);
+          //   push();
+          //   translate(x * scl, y * scl);
+          //   rotate(flowFieldEffector[index].heading());
+          //   strokeWeight(.2);
+          //   line(0, 0, scl, 0);
+          //   pop();
+          // } 
+          ///
+        }
+        yOffset += inc;
+        zOffset += 0.00003;
+      }
+
+      // Draw/update particles
+      for (var i = 0; i < particles.length; i++) {
+        particles[i].follow(flowFieldEffector);
+        particles[i].update();
+        particles[i].edges();
+        particles[i].show();
+      }
+
+      // fr.html(floor(frameRate()));
+    }
+
+    window.onresize = function() {
+      w = window.innerWidth;
+      h = window.innerHeight;
+      setup();
+    }
+
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min + 1) + min);
+    }
+
+    // Reference https://github.com/phughesmcr/grid-neighbors-1d
+    const Direction = {
+      NORTH: 0,
+      NORTH_EAST: 1,
+      EAST: 2,
+      SOUTH_EAST: 3,
+      SOUTH: 4,
+      SOUTH_WEST: 5,
+      WEST: 6,
+      NORTH_WEST: 7,
+    };
+
+    const generateNeighborLookup = (width, height) => {
+        const neighborLookup = {};
+        const size = width * height;
+        for (let cell = 0; cell < size; cell++) {
+            neighborLookup[cell] = getNeighbors(cell, width, height);
+        }
+        return (cell) => neighborLookup[cell];
+    };
+
+    const getNeighbors = (cell, width, height) => {
+      // Validate input
+      if (cell == null || isNaN(cell) || cell < 0) {
+          throw new SyntaxError("Expected cell to be a non-negative number.");
+      }
+      if (width == null || isNaN(width) || width < 0) {
+          throw new SyntaxError("Expected width to be a non-negative number.");
+      }
+      if (height == null || isNaN(height) || height < 0) {
+          throw new SyntaxError("Expected height to be a non-negative number.");
+      }
+      const CELL = Math.floor(cell);
+      const WIDTH = Math.floor(width);
+      const HEIGHT = Math.floor(height);
+      const SIZE = WIDTH * HEIGHT;
+      if (SIZE < 9) {
+          throw new RangeError(`Minimum grid size is 9 cells. Provided grid (${WIDTH} X ${HEIGHT}) is ${SIZE} cells.`);
+      }
+      else if (CELL >= SIZE) {
+          throw new RangeError(`Cell reference "${CELL}" out of bounds. Maximum is ${SIZE - 1}.`);
+      }
+      const ROW = Math.floor(CELL / WIDTH);
+      const COLUMN = CELL % WIDTH;
+      const LEFT_MOST_CELL = ROW * WIDTH;
+      const RIGHT_MOST_CELL = LEFT_MOST_CELL + WIDTH - 1;
+      const SIZE_MINUS_WIDTH = SIZE - WIDTH;
+      const CELL_MINUS_WIDTH = CELL - WIDTH;
+      const CELL_PLUS_WIDTH = CELL + WIDTH;
+      const TOP_RIGHT_CELL_IDX = WIDTH - 1;
+      const BOTTOM_RIGHT_CELL_IDX = SIZE - 1;
+      const north = CELL_MINUS_WIDTH < 0 ? SIZE_MINUS_WIDTH + CELL : CELL_MINUS_WIDTH;
+      const south = CELL_PLUS_WIDTH >= SIZE ? CELL - LEFT_MOST_CELL : CELL_PLUS_WIDTH;
+      let northEast;
+      let east;
+      let southEast;
+      let southWest;
+      let west;
+      let northWest;
+      // East, North-East, South-East
+      if (COLUMN === TOP_RIGHT_CELL_IDX) {
+          // RIGHT EDGE
+          east = LEFT_MOST_CELL;
+          if (CELL === TOP_RIGHT_CELL_IDX) {
+              // top right corner
+              northEast = SIZE_MINUS_WIDTH;
+              southEast = LEFT_MOST_CELL + WIDTH;
+          }
+          else if (CELL === BOTTOM_RIGHT_CELL_IDX) {
+              // bottom right corner
+              northEast = LEFT_MOST_CELL - WIDTH;
+              southEast = 0;
+          }
+          else {
+              northEast = LEFT_MOST_CELL - WIDTH;
+              southEast = LEFT_MOST_CELL + WIDTH;
+          }
+      }
+      else {
+          east = CELL + 1;
+          northEast = north + 1;
+          southEast = south + 1;
+      }
+      // West, North-West, South-West
+      if (COLUMN === 0) {
+          // LEFT EDGE
+          west = RIGHT_MOST_CELL;
+          if (CELL === SIZE_MINUS_WIDTH) {
+              // bottom left corner
+              northWest = CELL - 1;
+              southWest = TOP_RIGHT_CELL_IDX;
+          }
+          else if (CELL === 0) {
+              // top left corner
+              northWest = BOTTOM_RIGHT_CELL_IDX;
+              southWest = RIGHT_MOST_CELL + WIDTH;
+          }
+          else {
+              northWest = CELL - 1;
+              southWest = RIGHT_MOST_CELL + WIDTH;
+          }
+      }
+      else {
+          west = CELL - 1;
+          northWest = north - 1;
+          southWest = south - 1;
+      }
+      return [north, northEast, east, southEast, south, southWest, west, northWest];
+    }
+  </script>
+</body>
+</html>

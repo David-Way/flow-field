@@ -1,0 +1,16 @@
+{
+  "name": "flow-field",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "cp package.json dist/package.json && cd dist && npm install --only=production"
+  },
+  "keywords": [],
+  "author": "david_way@live.ie",
+  "license": "ISC",
+  "dependencies": {
+    "p5": "^1.7.0",
+    "serve": "^14.2.1"
+  }
+}
